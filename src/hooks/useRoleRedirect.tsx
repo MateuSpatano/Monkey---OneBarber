@@ -18,7 +18,7 @@ export function useRoleRedirect() {
     [roleName]
   );
 
-  // Load role flags using SECURITY DEFINER functions (works even when clients can't SELECT from roles)
+  // Carrega a Role de forma mais segura usando uma única chamada
   useEffect(() => {
     let cancelled = false;
 
@@ -35,18 +35,22 @@ export function useRoleRedirect() {
 
       setRoleLoading(true);
 
-      const [adminRes, clientRes, roleNameRes] = await Promise.all([
-        supabase.rpc('is_admin', { _user_id: user.id }),
-        supabase.rpc('is_client', { _user_id: user.id }),
-        supabase.rpc('get_user_role_name', { _user_id: user.id }),
-      ]);
+      // Usamos apenas get_user_role_name para evitar erros de funções RPC ausentes
+      const { data: roleNameRes, error } = await supabase.rpc('get_user_role_name', { _user_id: user.id });
 
       if (cancelled) return;
 
-      // If any RPC fails, default to safest behavior: treat as client=false/admin=false
-      setIsAdmin(Boolean(adminRes.data));
-      setIsClient(Boolean(clientRes.data));
-      setRoleName((roleNameRes.data as string | null) ?? null);
+      if (error) {
+        console.error("Erro ao buscar permissão do usuário:", error);
+      }
+
+      const role = (roleNameRes as string | null) ?? null;
+
+      // Define as permissões estritamente baseadas no texto do cargo
+      setRoleName(role);
+      setIsAdmin(role === 'Administrador');
+      setIsClient(role === 'Cliente');
+      
       setRoleLoading(false);
     }
 
@@ -56,37 +60,48 @@ export function useRoleRedirect() {
     };
   }, [authLoading, user?.id]);
 
+  // Lida com o redirecionamento baseado na Role
   useEffect(() => {
     if (authLoading || roleLoading) return;
     if (!user) return;
 
-    const isOnAdminRoute = location.pathname.startsWith('/admin');
-    const isOnDashboardRoute = location.pathname.startsWith('/dashboard');
-    const isOnClientRoute = location.pathname.startsWith('/client');
+    const currentPath = location.pathname;
+    const isOnAdminRoute = currentPath.startsWith('/admin');
+    const isOnDashboardRoute = currentPath.startsWith('/dashboard');
+    const isOnClientRoute = currentPath.startsWith('/client');
+    
+    // Regra nova: Onde o usuário cai logo após logar ou cadastrar?
+    const isOnAuthCallback = currentPath === '/' || currentPath === '/login' || currentPath === '/cadastrar';
 
-    // Redirect admin from client routes
+    // 1. Redirecionamento Pós-Login/Cadastro 
+    if (isOnAuthCallback) {
+      if (isAdmin) navigate('/admin', { replace: true });
+      else if (isClient) navigate('/client', { replace: true });
+      else navigate('/dashboard', { replace: true }); // Barbeiros/Recepcionistas
+      return;
+    }
+
+    // 2. Proteger as rotas de Cliente (Admin não deve ficar aqui)
     if (isAdmin && isOnClientRoute) {
       navigate('/admin', { replace: true });
     }
 
-    // Redirect non-admin from admin routes
+    // 3. Proteger as rotas de Admin (Ninguém além do admin entra aqui)
     if (!isAdmin && isOnAdminRoute) {
-      if (isClient) {
-        navigate('/client', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
-      }
+      if (isClient) navigate('/client', { replace: true });
+      else navigate('/dashboard', { replace: true });
     }
 
-    // Redirect client from dashboard routes
+    // 4. Proteger as rotas de Barbeiro (Cliente não entra no painel interno)
     if (isClient && isOnDashboardRoute) {
       navigate('/client', { replace: true });
     }
 
-    // Redirect non-client professional from client routes
+    // 5. Redirecionar Barbeiro se ele tentar acessar rotas exclusivas do cliente
     if (!isClient && !isAdmin && isOnClientRoute) {
       navigate('/dashboard', { replace: true });
     }
+
   }, [isAdmin, isClient, authLoading, roleLoading, user, location.pathname, navigate]);
 
   return { isAdmin, isClient, userRole, loading: authLoading || roleLoading };
