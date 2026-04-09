@@ -1,0 +1,7 @@
+
+ALTER TABLE public.appointments DROP CONSTRAINT appointments_status_check;
+ALTER TABLE public.appointments ADD CONSTRAINT appointments_status_check 
+  CHECK (status = ANY (ARRAY['open', 'confirmed', 'cancelled', 'no_show', 'pending', 'completed']));
+
+-- Update existing 'pending' appointments to 'open'
+UPDATE public.appointments SET status = 'open' WHERE status = 'pending';
