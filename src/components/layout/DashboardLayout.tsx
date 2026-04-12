@@ -34,10 +34,13 @@ export function DashboardLayout() {
       <main
         className={cn(
           'transition-all duration-300 min-h-screen',
+          // Mobile: add margin when sidebar is open
+          sidebarOpen && 'ml-56 lg:ml-0',
+          // Desktop: margin based on collapsed and submenu state
           isCollapsed ? (isSubmenuOpen ? 'lg:ml-[328px]' : 'lg:ml-[104px]') : (isSubmenuOpen ? 'lg:ml-[472px]' : 'lg:ml-[248px]')
         )}
       >
-        <div className="p-4 pt-16 lg:p-8 lg:pt-8">
+        <div className="p-4 pt-20 lg:p-8 lg:pt-12">
           <Outlet />
         </div>
       </main>
