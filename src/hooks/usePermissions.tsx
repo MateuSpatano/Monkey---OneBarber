@@ -16,6 +16,15 @@ interface UserRole {
   description: string | null;
 }
 
+type UserRolesResponse = {
+  role_id: string;
+  roles: UserRole | UserRole[] | null;
+} | null;
+
+type RolePermissionsResponse = Array<{
+  permissions: Permission | null;
+}>;
+
 export function usePermissions() {
   const { user } = useAuth();
   const [permissions, setPermissions] = useState<Permission[]>([]);
@@ -23,18 +32,7 @@ export function usePermissions() {
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
 
-  useEffect(() => {
-    if (user) {
-      fetchUserPermissions();
-    } else {
-      setPermissions([]);
-      setUserRole(null);
-      setIsAdmin(false);
-      setLoading(false);
-    }
-  }, [user]);
-
-  const fetchUserPermissions = async () => {
+  const fetchUserPermissions = useCallback(async () => {
     if (!user) return;
 
     try {
@@ -51,11 +49,11 @@ export function usePermissions() {
           )
         `)
         .eq('user_id', user.id)
-        .maybeSingle();
+        .maybeSingle() as { data: UserRolesResponse | null };
 
       // Depending on relationship metadata, PostgREST can return embedded relations
       // as either an object or an array. Normalize here.
-      const embedded = (userRoleData as any)?.roles;
+      const embedded = userRoleData?.roles;
       const role: UserRole | null = Array.isArray(embedded)
         ? (embedded[0] ?? null)
         : (embedded ?? null);
@@ -73,11 +71,11 @@ export function usePermissions() {
               action
             )
           `)
-          .eq('role_id', role.id);
+          .eq('role_id', role.id) as { data: RolePermissionsResponse | null };
 
         if (rolePermissions) {
           const perms = rolePermissions
-            .map((rp: any) => rp.permissions)
+            .map(rp => rp.permissions)
             .filter(Boolean) as Permission[];
           setPermissions(perms);
         }
@@ -94,7 +92,18 @@ export function usePermissions() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      fetchUserPermissions();
+    } else {
+      setPermissions([]);
+      setUserRole(null);
+      setIsAdmin(false);
+      setLoading(false);
+    }
+  }, [fetchUserPermissions, user]);
 
   const hasPermission = useCallback((module: AppModule, action: PermissionAction): boolean => {
     if (isAdmin) return true;
