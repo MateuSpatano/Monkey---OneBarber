@@ -105,9 +105,9 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen w-full flex bg-white overflow-hidden">
+    <div className="h-screen w-full flex bg-white overflow-hidden">
       {/* Left Side - Form Area */}
-      <div className="w-full lg:w-[45%] flex flex-col justify-center items-center p-8 sm:p-12 lg:p-16 bg-white overflow-y-auto">
+      <div className="w-full lg:w-[45%] h-full flex flex-col justify-center items-center p-8 sm:p-12 lg:p-16 bg-white overflow-y-auto">
         <div className="w-full max-w-sm">
           {/* Logo Area */}
           <div className="flex flex-col items-center mb-4">
@@ -230,15 +230,14 @@ export default function Login() {
       </div>
 
       {/* Right Side - Image Hero */}
-      <div className="hidden lg:block lg:w-[55%] relative h-screen bg-white">
-        <div 
-          className="absolute inset-0 w-full h-full bg-cover bg-center bg-no-repeat rounded-l-[32px] overflow-hidden"
-          style={{ backgroundImage: 'url(/barber-login-bg.jpg)' }}
-          aria-label="Barber Shop"
-        >
-          {/* Dark Overlay Filter */}
-          <div className="absolute inset-0 bg-slate-950/40" />
-        </div>
+      <div className="hidden lg:block lg:w-[55%] relative h-full">
+        <img
+          src="/barber-login-bg.jpg"
+          alt="Barber Shop"
+          className="absolute inset-0 w-full h-full object-cover object-center rounded-l-[32px]"
+        />
+        {/* Dark Overlay */}
+        <div className="absolute inset-0 bg-slate-950/40 rounded-l-[32px]" />
       </div>
     </div>
   );

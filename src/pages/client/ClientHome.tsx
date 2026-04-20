@@ -1,181 +1,312 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/contexts/AuthContext';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Calendar, Clock, Scissors, ArrowRight, Store } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
-import { format } from 'date-fns';
-import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import {
+  MapPin,
+  Phone,
+  Star,
+  Clock,
+  CalendarDays,
+  MessageCircle,
+  Navigation,
+  Scissors,
+  Users,
+} from 'lucide-react';
+import { Link } from 'react-router-dom';
+
+type Tab = 'services' | 'professionals' | 'about';
 
 export default function ClientHome() {
-  const { user } = useAuth();
   const { establishmentId } = useOutletContext<{ establishmentId: string }>();
+  const [activeTab, setActiveTab] = useState<Tab>('services');
 
-  const { data: clientData } = useQuery({
-    queryKey: ['client-profile', user?.email],
+  const { data: establishment } = useQuery({
+    queryKey: ['establishment-profile', establishmentId],
     queryFn: async () => {
-      if (!user?.email) return null;
       const { data } = await supabase
-        .from('clients')
+        .from('establishments')
         .select('*')
-        .eq('email', user.email)
+        .eq('id', establishmentId)
         .maybeSingle();
       return data;
     },
-    enabled: !!user?.email,
-  });
-
-  const { data: nextAppointment } = useQuery({
-    queryKey: ['client-next-appointment', clientData?.id, establishmentId],
-    queryFn: async () => {
-      if (!clientData?.id) return null;
-      const today = new Date().toISOString().split('T')[0];
-      const { data } = await supabase
-        .from('appointments')
-        .select(`*, professionals:professional_id (name)`)
-        .eq('client_id', clientData.id)
-        .eq('establishment_id', establishmentId)
-        .gte('appointment_date', today)
-        .in('status', ['pending', 'confirmed'])
-        .order('appointment_date', { ascending: true })
-        .order('appointment_time', { ascending: true })
-        .limit(1)
-        .maybeSingle();
-      return data;
-    },
-    enabled: !!clientData?.id,
   });
 
   const { data: services } = useQuery({
-    queryKey: ['featured-services', establishmentId],
+    queryKey: ['client-home-services', establishmentId],
     queryFn: async () => {
       const { data } = await supabase
         .from('products')
         .select('*')
         .eq('type', 'service')
-        .eq('status', 'active')
-        .limit(4);
-      return data;
+        .eq('status', 'active');
+      return data ?? [];
     },
   });
 
-  const handleChangeEstablishment = () => {
-    localStorage.removeItem('client-selected-establishment');
-    window.location.reload();
-  };
+  const { data: professionals } = useQuery({
+    queryKey: ['client-home-professionals', establishmentId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('professionals')
+        .select('*')
+        .eq('establishment_id', establishmentId)
+        .eq('status', 'active');
+      return data ?? [];
+    },
+  });
+
+  const displayName = establishment?.trade_name || establishment?.name || 'Barbearia';
+  const addressParts = [establishment?.address, establishment?.city, establishment?.state].filter(Boolean);
+  const address = addressParts.join(', ');
+  const whatsappNumber = establishment?.phone?.replace(/\D/g, '');
+  const mapsUrl = address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : null;
+
+  const tabs: { key: Tab; label: string }[] = [
+    { key: 'services', label: 'Nossos Serviços' },
+    { key: 'professionals', label: 'Profissionais' },
+    { key: 'about', label: 'Sobre nós' },
+  ];
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-6">
-        <div className="flex flex-col gap-2">
-          <h1 className="text-2xl sm:text-3xl font-black text-zinc-900 tracking-tight">
-            Olá, {clientData?.name?.split(' ')[0] || 'Cliente'}! 👋
-          </h1>
-          <p className="text-muted-foreground font-medium">Bem-vindo ao seu portal de agendamentos</p>
-        </div>
-        <Button variant="outline" size="sm" onClick={handleChangeEstablishment} className="premium-button-ghost bg-white border-none h-11 px-5 shadow-xl">
-          <Store className="h-5 w-5 mr-2" />
-          <span className="font-bold">Trocar Barbearia</span>
-        </Button>
-      </div>
+    <div className="min-h-screen bg-gray-100 -m-4 sm:-m-6 md:-m-6">
+      <div className="max-w-2xl mx-auto bg-white shadow-2xl border-x border-zinc-200 min-h-screen flex flex-col">
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        <Card className="premium-card bg-primary text-primary-foreground border-none shadow-2xl rounded-[32px] overflow-hidden transition-all hover:scale-105">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-3 text-lg font-black tracking-tight uppercase">
-              <div className="p-2 rounded-2xl bg-white/20">
-                <Calendar className="h-5 w-5" />
-              </div>
-              Agendar Horário
-            </CardTitle>
-            <CardDescription className="text-primary-foreground/90 font-medium ml-12">
-              Escolha um serviço e agende seu próximo atendimento agora
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-8 pb-8">
-            <Button variant="secondary" asChild className="w-full premium-button-ghost bg-white text-primary border-none h-12 shadow-lg">
-              <Link to="/client/book" className="font-black">Agendar Agora <ArrowRight className="ml-2 h-5 w-5" /></Link>
-            </Button>
-          </CardContent>
-        </Card>
+        {/* ── Banner ─────────────────────────────────────────── */}
+        <div className="relative h-44 flex-shrink-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-black overflow-hidden">
+          {/* decorative texture */}
+          <div className="absolute inset-0 opacity-10"
+            style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,.07) 10px, rgba(255,255,255,.07) 11px)' }}
+          />
 
-        <Card className="premium-card border-none shadow-xl rounded-[32px] overflow-hidden transition-all hover:shadow-2xl">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-3 text-lg font-black tracking-tight uppercase text-zinc-900">
-              <div className="p-2 rounded-2xl bg-zinc-100 text-zinc-900">
-                <Clock className="h-5 w-5" />
-              </div>
-              Próximo Horário
-            </CardTitle>
-            <CardDescription className="ml-12 font-medium">
-              {nextAppointment ? 'Seu agendamento confirmado' : 'Nenhum horário marcado'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="px-8 pb-8">
-            {nextAppointment ? (
-              <div className="space-y-3 bg-zinc-50 p-5 rounded-2xl border border-black/5">
-                <p className="font-black text-zinc-900">{nextAppointment.service}</p>
-                <div className="grid grid-cols-1 gap-1 text-xs font-bold text-zinc-500 uppercase tracking-widest">
-                  <p>
-                    {nextAppointment.appointment_date 
-                      ? format(new Date(nextAppointment.appointment_date), "dd 'de' MMMM", { locale: ptBR }) 
-                      : 'Data não disponível'} 
-                    {nextAppointment.appointment_time ? ` — ${nextAppointment.appointment_time.slice(0, 5)}` : ''}
-                  </p>
-                  <p>Profissional: {(nextAppointment.professionals as any)?.name || 'Profissional'}</p>
+          {/* Floating logo */}
+          <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
+            <div className="h-20 w-20 rounded-full border-4 border-white bg-white shadow-2xl overflow-hidden">
+              {establishment?.logo_url ? (
+                <img
+                  src={establishment.logo_url}
+                  alt={displayName}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full bg-zinc-900 flex items-center justify-center">
+                  <Scissors className="h-8 w-8 text-white" />
                 </div>
-              </div>
-            ) : (
-              <Button variant="outline" asChild className="w-full premium-button-ghost bg-zinc-50 border-none h-12 shadow-sm">
-                <Link to="/client/book" className="font-bold">Ver Serviços</Link>
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="premium-card border-none shadow-xl rounded-[32px] overflow-hidden transition-all hover:shadow-2xl">
-          <CardHeader className="pb-4">
-            <CardTitle className="flex items-center gap-3 text-lg font-black tracking-tight uppercase text-zinc-900">
-              <div className="p-2 rounded-2xl bg-zinc-100 text-zinc-900">
-                <Scissors className="h-5 w-5" />
-              </div>
-              Minha Conta
-            </CardTitle>
-            <CardDescription className="ml-12 font-medium">Veja seu histórico e agendamentos</CardDescription>
-          </CardHeader>
-          <CardContent className="px-8 pb-8">
-            <Button variant="outline" asChild className="w-full premium-button-ghost bg-zinc-50 border-none h-12 shadow-sm">
-              <Link to="/client/appointments" className="font-bold">Ver Todos</Link>
-            </Button>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-xl font-semibold">Serviços Disponíveis</h2>
-          <Button variant="link" asChild>
-            <Link to="/client/services">Ver todos</Link>
-          </Button>
+              )}
+            </div>
+          </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-          {services?.map((service) => (
-            <Card key={service.id} className="hover:shadow-md transition-shadow">
-              <CardHeader className="pb-2">
-                <CardTitle className="text-lg">{service.name}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-primary">
-                  R$ {typeof service.price === 'number' ? service.price.toFixed(2).replace('.', ',') : '0,00'}
-                </p>
-                {service.description && (
-                  <p className="text-sm text-muted-foreground mt-1 line-clamp-2">{service.description}</p>
-                )}
-              </CardContent>
-            </Card>
+
+        {/* ── Identity ────────────────────────────────────────── */}
+        <div className="pt-14 px-5 text-center pb-4">
+          <h1 className="text-2xl font-black text-zinc-900 tracking-tight">{displayName}</h1>
+
+          <div className="flex items-center justify-center gap-1.5 mt-1.5">
+            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+            <span className="text-sm font-bold text-zinc-800">4.9</span>
+            <span className="text-sm text-zinc-400">(128 avaliações)</span>
+          </div>
+
+          {address && (
+            <div className="flex items-center justify-center gap-1 mt-1.5">
+              <MapPin className="h-3.5 w-3.5 text-zinc-400 flex-shrink-0" />
+              <span className="text-xs text-zinc-500 line-clamp-1">{address}</span>
+            </div>
+          )}
+        </div>
+
+        {/* ── Action Buttons ──────────────────────────────────── */}
+        <div className="flex gap-2 px-5 pb-5">
+          <Button asChild className="flex-1 font-bold h-11 rounded-xl shadow-lg text-sm">
+            <Link to="/client/book">
+              <CalendarDays className="h-4 w-4 mr-2" />
+              Agendar
+            </Link>
+          </Button>
+
+          {whatsappNumber && (
+            <Button
+              variant="outline"
+              asChild
+              className="flex-1 font-semibold h-11 rounded-xl border-zinc-200 text-zinc-700 text-sm hover:bg-zinc-50"
+            >
+              <a
+                href={`https://wa.me/55${whatsappNumber}`}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                <MessageCircle className="h-4 w-4 mr-2 text-emerald-500" />
+                Mensagem
+              </a>
+            </Button>
+          )}
+
+          {mapsUrl && (
+            <Button
+              variant="outline"
+              asChild
+              className="flex-1 font-semibold h-11 rounded-xl border-zinc-200 text-zinc-700 text-sm hover:bg-zinc-50"
+            >
+              <a href={mapsUrl} target="_blank" rel="noopener noreferrer">
+                <Navigation className="h-4 w-4 mr-2 text-blue-500" />
+                Rota
+              </a>
+            </Button>
+          )}
+        </div>
+
+        {/* ── Tabs ────────────────────────────────────────────── */}
+        <div className="flex border-b border-zinc-200 sticky top-0 bg-white z-10">
+          {tabs.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={cn(
+                'flex-1 py-3 text-xs font-semibold transition-colors border-b-2 -mb-px',
+                activeTab === key
+                  ? 'border-zinc-900 text-zinc-900'
+                  : 'border-transparent text-zinc-400 hover:text-zinc-600'
+              )}
+            >
+              {label}
+            </button>
           ))}
+        </div>
+
+        {/* ── Tab Content ─────────────────────────────────────── */}
+        <div className="px-4 py-4 flex-1">
+
+          {/* Serviços */}
+          {activeTab === 'services' && (
+            <div className="space-y-3">
+              {services && services.length > 0 ? (
+                services.map((service) => (
+                  <div
+                    key={service.id}
+                    className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-100 bg-zinc-50 hover:bg-zinc-100 transition-colors"
+                  >
+                    {/* Icon */}
+                    <div className="h-10 w-10 rounded-xl bg-zinc-900 flex items-center justify-center flex-shrink-0">
+                      <Scissors className="h-5 w-5 text-white" />
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-zinc-900 text-sm leading-tight truncate">
+                        {service.name}
+                      </p>
+                      <div className="flex items-center gap-3 mt-0.5">
+                        {service.duration_minutes && (
+                          <span className="flex items-center gap-1 text-xs text-zinc-500">
+                            <Clock className="h-3 w-3" />
+                            {service.duration_minutes} min
+                          </span>
+                        )}
+                        <span className="text-sm font-black text-zinc-900">
+                          R${' '}
+                          {typeof service.price === 'number'
+                            ? service.price.toFixed(2).replace('.', ',')
+                            : '0,00'}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* CTA */}
+                    <Button
+                      asChild
+                      size="sm"
+                      className="flex-shrink-0 h-8 px-4 rounded-xl font-bold text-xs"
+                    >
+                      <Link to="/client/book">Reservar</Link>
+                    </Button>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
+                  <Scissors className="h-10 w-10 mb-3 opacity-30" />
+                  <p className="text-sm font-medium">Nenhum serviço disponível</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Profissionais */}
+          {activeTab === 'professionals' && (
+            <div className="space-y-3">
+              {professionals && professionals.length > 0 ? (
+                professionals.map((pro) => (
+                  <div
+                    key={pro.id}
+                    className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-100 bg-zinc-50"
+                  >
+                    <div className="h-12 w-12 rounded-full overflow-hidden flex-shrink-0 bg-zinc-200">
+                      {pro.avatar_url ? (
+                        <img
+                          src={pro.avatar_url}
+                          alt={pro.name}
+                          className="w-full h-full object-cover"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
+                          <Users className="h-5 w-5 text-white" />
+                        </div>
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="font-bold text-zinc-900 text-sm">{pro.name}</p>
+                      {pro.specialty && (
+                        <p className="text-xs text-zinc-500 mt-0.5">{pro.specialty}</p>
+                      )}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
+                  <Users className="h-10 w-10 mb-3 opacity-30" />
+                  <p className="text-sm font-medium">Nenhum profissional cadastrado</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Sobre nós */}
+          {activeTab === 'about' && (
+            <div className="space-y-4 py-1">
+              <p className="text-sm text-zinc-600 leading-relaxed">
+                Bem-vindo à {displayName}! Somos especialistas em cortes masculinos modernos e
+                tratamentos capilares de alta performance. Nossa equipe de profissionais
+                qualificados está pronta para oferecer a melhor experiência de cuidado pessoal,
+                com atendimento personalizado e um ambiente acolhedor.
+              </p>
+
+              {address && (
+                <div className="flex items-start gap-3 p-4 rounded-2xl bg-zinc-50 border border-zinc-100">
+                  <MapPin className="h-4 w-4 text-zinc-500 mt-0.5 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-0.5">
+                      Endereço
+                    </p>
+                    <p className="text-sm text-zinc-700">{address}</p>
+                  </div>
+                </div>
+              )}
+
+              {establishment?.phone && (
+                <div className="flex items-center gap-3 p-4 rounded-2xl bg-zinc-50 border border-zinc-100">
+                  <Phone className="h-4 w-4 text-zinc-500 flex-shrink-0" />
+                  <div>
+                    <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide mb-0.5">
+                      Telefone
+                    </p>
+                    <p className="text-sm text-zinc-700">{establishment.phone}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </div>
