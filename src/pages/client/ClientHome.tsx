@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOutletContext } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,10 +19,36 @@ import { Link } from 'react-router-dom';
 
 type Tab = 'services' | 'professionals' | 'about';
 
+// ── Star display helper ───────────────────────────────────────────
+function StarDisplay({ avg, count }: { avg: number; count: number }) {
+  const full = Math.floor(avg);
+  const hasHalf = avg - full >= 0.5;
+  return (
+    <div className="flex items-center gap-0.5">
+      {Array.from({ length: 5 }).map((_, i) => (
+        <Star
+          key={i}
+          className={cn(
+            'h-3 w-3',
+            i < full
+              ? 'fill-amber-400 text-amber-400'
+              : i === full && hasHalf
+              ? 'fill-amber-400/50 text-amber-400/50'
+              : 'fill-zinc-200 text-zinc-200'
+          )}
+        />
+      ))}
+      <span className="text-[11px] text-zinc-500 ml-1">({count})</span>
+    </div>
+  );
+}
+
+// ── Page ─────────────────────────────────────────────────────────
 export default function ClientHome() {
   const { establishmentId } = useOutletContext<{ establishmentId: string }>();
   const [activeTab, setActiveTab] = useState<Tab>('services');
 
+  // ── Establishment ────
   const { data: establishment } = useQuery({
     queryKey: ['establishment-profile', establishmentId],
     queryFn: async () => {
@@ -35,6 +61,7 @@ export default function ClientHome() {
     },
   });
 
+  // ── Services ────
   const { data: services } = useQuery({
     queryKey: ['client-home-services', establishmentId],
     queryFn: async () => {
@@ -47,6 +74,7 @@ export default function ClientHome() {
     },
   });
 
+  // ── Professionals ────
   const { data: professionals } = useQuery({
     queryKey: ['client-home-professionals', establishmentId],
     queryFn: async () => {
@@ -59,11 +87,57 @@ export default function ClientHome() {
     },
   });
 
+  // ── Ratings (Mission 4) ────
+  const professionalIds = useMemo(
+    () => professionals?.map(p => p.id) ?? [],
+    [professionals]
+  );
+
+  const { data: ratings } = useQuery({
+    queryKey: ['professional-ratings', professionalIds],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('avaliacoes')
+        .select('professional_id, nota')
+        .in('professional_id', professionalIds);
+      return data ?? [];
+    },
+    enabled: professionalIds.length > 0,
+  });
+
+  // Aggregate ratings per professional
+  const ratingsByPro = useMemo(() => {
+    const map: Record<string, { avg: number; count: number }> = {};
+    if (!ratings?.length) return map;
+    const grouped: Record<string, number[]> = {};
+    ratings.forEach(r => {
+      if (!grouped[r.professional_id]) grouped[r.professional_id] = [];
+      grouped[r.professional_id].push(r.nota);
+    });
+    Object.entries(grouped).forEach(([id, notes]) => {
+      map[id] = {
+        avg: notes.reduce((s, n) => s + n, 0) / notes.length,
+        count: notes.length,
+      };
+    });
+    return map;
+  }, [ratings]);
+
+  // Establishment-level average rating (shown in the header)
+  const establishmentRating = useMemo(() => {
+    if (!ratings?.length) return null;
+    const avg = ratings.reduce((s, r) => s + r.nota, 0) / ratings.length;
+    return { avg: Math.round(avg * 10) / 10, count: ratings.length };
+  }, [ratings]);
+
+  // ── Derived display values ────
   const displayName = establishment?.trade_name || establishment?.name || 'Barbearia';
-  const addressParts = [establishment?.address, establishment?.city, establishment?.state].filter(Boolean);
-  const address = addressParts.join(', ');
+  const address = [establishment?.address, establishment?.city, establishment?.state]
+    .filter(Boolean)
+    .join(', ');
   const whatsappNumber = establishment?.phone?.replace(/\D/g, '');
   const mapsUrl = address ? `https://maps.google.com/?q=${encodeURIComponent(address)}` : null;
+  const bannerUrl = (establishment as any)?.banner_url ?? null;
 
   const tabs: { key: Tab; label: string }[] = [
     { key: 'services', label: 'Nossos Serviços' },
@@ -72,17 +146,36 @@ export default function ClientHome() {
   ];
 
   return (
+    /*
+      Mission 5 — desktop responsiveness:
+      • Outer:  bg-gray-100 + negative margins to cancel ClientLayout's padding
+      • Inner:  max-w-2xl mx-auto + bg-white shadow-2xl border-x  →  "app card"
+      • On mobile the card fills 100 % of the available width naturally
+    */
     <div className="min-h-screen bg-gray-100 -m-4 sm:-m-6 md:-m-6">
       <div className="max-w-2xl mx-auto bg-white shadow-2xl border-x border-zinc-200 min-h-screen flex flex-col">
 
         {/* ── Banner ─────────────────────────────────────────── */}
-        <div className="relative h-44 flex-shrink-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-black overflow-hidden">
-          {/* decorative texture */}
-          <div className="absolute inset-0 opacity-10"
-            style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(255,255,255,.07) 10px, rgba(255,255,255,.07) 11px)' }}
-          />
+        <div className="relative h-44 flex-shrink-0 overflow-hidden">
+          {bannerUrl ? (
+            <img
+              src={bannerUrl}
+              alt="Banner"
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            <div className="absolute inset-0 bg-gradient-to-br from-zinc-800 via-zinc-900 to-black">
+              <div
+                className="absolute inset-0 opacity-10"
+                style={{
+                  backgroundImage:
+                    'repeating-linear-gradient(45deg,transparent,transparent 10px,rgba(255,255,255,.07) 10px,rgba(255,255,255,.07) 11px)',
+                }}
+              />
+            </div>
+          )}
 
-          {/* Floating logo */}
+          {/* Logo */}
           <div className="absolute -bottom-10 left-1/2 -translate-x-1/2">
             <div className="h-20 w-20 rounded-full border-4 border-white bg-white shadow-2xl overflow-hidden">
               {establishment?.logo_url ? (
@@ -100,14 +193,26 @@ export default function ClientHome() {
           </div>
         </div>
 
-        {/* ── Identity ────────────────────────────────────────── */}
+        {/* ── Identity ──────────────────────────────────────── */}
         <div className="pt-14 px-5 text-center pb-4">
           <h1 className="text-2xl font-black text-zinc-900 tracking-tight">{displayName}</h1>
 
+          {/* Dynamic rating (Mission 4) — fallback to placeholder if no data yet */}
           <div className="flex items-center justify-center gap-1.5 mt-1.5">
-            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-            <span className="text-sm font-bold text-zinc-800">4.9</span>
-            <span className="text-sm text-zinc-400">(128 avaliações)</span>
+            {establishmentRating ? (
+              <>
+                <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
+                <span className="text-sm font-bold text-zinc-800">
+                  {establishmentRating.avg.toFixed(1)}
+                </span>
+                <span className="text-sm text-zinc-400">
+                  ({establishmentRating.count}{' '}
+                  {establishmentRating.count === 1 ? 'avaliação' : 'avaliações'})
+                </span>
+              </>
+            ) : (
+              <span className="text-xs text-zinc-400 italic">Sem avaliações ainda</span>
+            )}
           </div>
 
           {address && (
@@ -118,7 +223,7 @@ export default function ClientHome() {
           )}
         </div>
 
-        {/* ── Action Buttons ──────────────────────────────────── */}
+        {/* ── Action Buttons ─────────────────────────────────── */}
         <div className="flex gap-2 px-5 pb-5">
           <Button asChild className="flex-1 font-bold h-11 rounded-xl shadow-lg text-sm">
             <Link to="/client/book">
@@ -158,7 +263,7 @@ export default function ClientHome() {
           )}
         </div>
 
-        {/* ── Tabs ────────────────────────────────────────────── */}
+        {/* ── Tabs ───────────────────────────────────────────── */}
         <div className="flex border-b border-zinc-200 sticky top-0 bg-white z-10">
           {tabs.map(({ key, label }) => (
             <button
@@ -176,24 +281,22 @@ export default function ClientHome() {
           ))}
         </div>
 
-        {/* ── Tab Content ─────────────────────────────────────── */}
+        {/* ── Tab content ────────────────────────────────────── */}
         <div className="px-4 py-4 flex-1">
 
           {/* Serviços */}
           {activeTab === 'services' && (
             <div className="space-y-3">
               {services && services.length > 0 ? (
-                services.map((service) => (
+                services.map(service => (
                   <div
                     key={service.id}
                     className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-100 bg-zinc-50 hover:bg-zinc-100 transition-colors"
                   >
-                    {/* Icon */}
                     <div className="h-10 w-10 rounded-xl bg-zinc-900 flex items-center justify-center flex-shrink-0">
                       <Scissors className="h-5 w-5 text-white" />
                     </div>
 
-                    {/* Info */}
                     <div className="flex-1 min-w-0">
                       <p className="font-bold text-zinc-900 text-sm leading-tight truncate">
                         {service.name}
@@ -214,7 +317,6 @@ export default function ClientHome() {
                       </div>
                     </div>
 
-                    {/* CTA */}
                     <Button
                       asChild
                       size="sm"
@@ -233,36 +335,50 @@ export default function ClientHome() {
             </div>
           )}
 
-          {/* Profissionais */}
+          {/* Profissionais — com estrelas dinâmicas (Mission 4) */}
           {activeTab === 'professionals' && (
             <div className="space-y-3">
               {professionals && professionals.length > 0 ? (
-                professionals.map((pro) => (
-                  <div
-                    key={pro.id}
-                    className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-100 bg-zinc-50"
-                  >
-                    <div className="h-12 w-12 rounded-full overflow-hidden flex-shrink-0 bg-zinc-200">
-                      {pro.avatar_url ? (
-                        <img
-                          src={pro.avatar_url}
-                          alt={pro.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
-                          <Users className="h-5 w-5 text-white" />
+                professionals.map(pro => {
+                  const proRating = ratingsByPro[pro.id];
+                  return (
+                    <div
+                      key={pro.id}
+                      className="flex items-center gap-3 p-4 rounded-2xl border border-zinc-100 bg-zinc-50"
+                    >
+                      <div className="h-12 w-12 rounded-full overflow-hidden flex-shrink-0 bg-zinc-200">
+                        {pro.avatar_url ? (
+                          <img
+                            src={pro.avatar_url}
+                            alt={pro.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-full h-full bg-zinc-800 flex items-center justify-center">
+                            <Users className="h-5 w-5 text-white" />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex-1 min-w-0">
+                        <p className="font-bold text-zinc-900 text-sm">{pro.name}</p>
+                        {pro.specialty && (
+                          <p className="text-xs text-zinc-500 mt-0.5">{pro.specialty}</p>
+                        )}
+                        {/* Dynamic stars (Mission 4) */}
+                        <div className="mt-1">
+                          {proRating ? (
+                            <StarDisplay avg={proRating.avg} count={proRating.count} />
+                          ) : (
+                            <span className="text-[11px] text-zinc-400 italic">
+                              Sem avaliações
+                            </span>
+                          )}
                         </div>
-                      )}
+                      </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-bold text-zinc-900 text-sm">{pro.name}</p>
-                      {pro.specialty && (
-                        <p className="text-xs text-zinc-500 mt-0.5">{pro.specialty}</p>
-                      )}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               ) : (
                 <div className="flex flex-col items-center justify-center py-16 text-zinc-400">
                   <Users className="h-10 w-10 mb-3 opacity-30" />

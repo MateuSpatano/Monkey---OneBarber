@@ -1,57 +1,53 @@
 import { useState } from 'react';
-import { useToast } from './use-toast';
+import { toast } from 'sonner';
 
-interface CepData {
-  street: string;
-  neighborhood: string;
-  city: string;
-  state: string;
+interface ViaCepResponse {
+  cep: string;
+  logradouro: string;
+  complemento: string;
+  bairro: string;
+  localidade: string;
+  uf: string;
+  erro?: boolean;
 }
 
 export function useCepLookup() {
-  const [loading, setLoading] = useState(false);
-  const { toast } = useToast();
+  const [isLoadingCep, setIsLoadingCep] = useState(false);
 
-  const lookupCep = async (cep: string): Promise<CepData | null> => {
-    // Remove non-numeric characters
-    const cleanCep = cep.replace(/\D/g, '');
-    
-    if (cleanCep.length !== 8) {
-      return null;
-    }
+  // O parâmetro 'setValue' vem do react-hook-form para preencher os inputs
+  const buscarCep = async (cep: string, setValue: any) => {
+    // Limpa a string, mantendo apenas números
+    const cepLimpo = cep.replace(/\D/g, '');
 
-    setLoading(true);
+    // Verifica se tem os 8 dígitos necessários
+    if (cepLimpo.length !== 8) return;
+
+    setIsLoadingCep(true);
 
     try {
-      const response = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`);
-      const data = await response.json();
+      const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
+      const data: ViaCepResponse = await response.json();
 
       if (data.erro) {
-        toast({
-          variant: 'destructive',
-          title: 'CEP não encontrado',
-          description: 'Verifique o CEP informado.',
-        });
-        return null;
+        toast.error('CEP não encontrado. Verifique os números e tente novamente.');
+        return;
       }
 
-      return {
-        street: data.logradouro || '',
-        neighborhood: data.bairro || '',
-        city: data.localidade || '',
-        state: data.uf || '',
-      };
+      // Preenche automaticamente os inputs do formulário.
+      // Certifique-se de que o nome ('name') dos seus inputs seja igual aos primeiros parâmetros abaixo:
+      setValue('rua', data.logradouro, { shouldValidate: true });
+      setValue('bairro', data.bairro, { shouldValidate: true });
+      setValue('cidade', data.localidade, { shouldValidate: true });
+      setValue('estado', data.uf, { shouldValidate: true });
+      
+      toast.success('Endereço preenchido automaticamente!');
+
     } catch (error) {
-      toast({
-        variant: 'destructive',
-        title: 'Erro ao buscar CEP',
-        description: 'Não foi possível buscar o endereço. Tente novamente.',
-      });
-      return null;
+      toast.error('Erro ao buscar o CEP. Tente preencher manualmente.');
     } finally {
-      setLoading(false);
+      setIsLoadingCep(false);
     }
   };
 
-  return { lookupCep, loading };
+  return { buscarCep, isLoadingCep };
 }

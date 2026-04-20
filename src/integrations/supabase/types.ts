@@ -14,6 +14,58 @@ export type Database = {
   }
   public: {
     Tables: {
+      avaliacoes: {
+        Row: {
+          id: string
+          appointment_id: string | null
+          professional_id: string
+          client_id: string | null
+          nota: number
+          comentario: string | null
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          appointment_id?: string | null
+          professional_id: string
+          client_id?: string | null
+          nota: number
+          comentario?: string | null
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          appointment_id?: string | null
+          professional_id?: string
+          client_id?: string | null
+          nota?: number
+          comentario?: string | null
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "avaliacoes_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avaliacoes_professional_id_fkey"
+            columns: ["professional_id"]
+            isOneToOne: false
+            referencedRelation: "professionals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "avaliacoes_client_id_fkey"
+            columns: ["client_id"]
+            isOneToOne: false
+            referencedRelation: "clients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       appointments: {
         Row: {
           appointment_date: string
@@ -583,6 +635,7 @@ export type Database = {
       establishments: {
         Row: {
           address: string | null
+          banner_url: string | null
           city: string | null
           created_at: string
           document_number: string | null
@@ -599,6 +652,7 @@ export type Database = {
         }
         Insert: {
           address?: string | null
+          banner_url?: string | null
           city?: string | null
           created_at?: string
           document_number?: string | null
@@ -615,6 +669,7 @@ export type Database = {
         }
         Update: {
           address?: string | null
+          banner_url?: string | null
           city?: string | null
           created_at?: string
           document_number?: string | null
