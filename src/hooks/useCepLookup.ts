@@ -11,43 +11,72 @@ interface ViaCepResponse {
   erro?: boolean;
 }
 
+/** Endereço normalizado retornado pelo hook */
+export interface CepAddress {
+  street: string;
+  neighborhood: string;
+  city: string;
+  state: string;
+}
+
 export function useCepLookup() {
-  const [isLoadingCep, setIsLoadingCep] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // O parâmetro 'setValue' vem do react-hook-form para preencher os inputs
-  const buscarCep = async (cep: string, setValue: any) => {
-    // Limpa a string, mantendo apenas números
-    const cepLimpo = cep.replace(/\D/g, '');
+  /**
+   * API primária — retorna os dados do endereço ou null.
+   * Usada por ClientModal e PersonalInfoTab.
+   */
+  const lookupCep = async (cep: string): Promise<CepAddress | null> => {
+    const clean = cep.replace(/\D/g, '');
+    if (clean.length !== 8) return null;
 
-    // Verifica se tem os 8 dígitos necessários
-    if (cepLimpo.length !== 8) return;
-
-    setIsLoadingCep(true);
-
+    setLoading(true);
     try {
-      const response = await fetch(`https://viacep.com.br/ws/${cepLimpo}/json/`);
-      const data: ViaCepResponse = await response.json();
+      const res = await fetch(`https://viacep.com.br/ws/${clean}/json/`);
+      const data: ViaCepResponse = await res.json();
 
       if (data.erro) {
         toast.error('CEP não encontrado. Verifique os números e tente novamente.');
-        return;
+        return null;
       }
 
-      // Preenche automaticamente os inputs do formulário.
-      // Certifique-se de que o nome ('name') dos seus inputs seja igual aos primeiros parâmetros abaixo:
-      setValue('rua', data.logradouro, { shouldValidate: true });
-      setValue('bairro', data.bairro, { shouldValidate: true });
-      setValue('cidade', data.localidade, { shouldValidate: true });
-      setValue('estado', data.uf, { shouldValidate: true });
-      
       toast.success('Endereço preenchido automaticamente!');
-
-    } catch (error) {
+      return {
+        street:       data.logradouro,
+        neighborhood: data.bairro,
+        city:         data.localidade,
+        state:        data.uf,
+      };
+    } catch {
       toast.error('Erro ao buscar o CEP. Tente preencher manualmente.');
+      return null;
     } finally {
-      setIsLoadingCep(false);
+      setLoading(false);
     }
   };
 
-  return { buscarCep, isLoadingCep };
+  /**
+   * API de compatibilidade — recebe um setter genérico e chama com os campos
+   * usando os nomes do react-hook-form ('rua', 'bairro', 'cidade', 'estado').
+   * Usada por EstablishmentModal (que adapta os nomes internamente).
+   */
+  const buscarCep = async (
+    cep: string,
+    setValue: (field: string, value: string, options?: object) => void
+  ): Promise<void> => {
+    const address = await lookupCep(cep);
+    if (!address) return;
+
+    setValue('rua',    address.street,       { shouldValidate: true });
+    setValue('bairro', address.neighborhood, { shouldValidate: true });
+    setValue('cidade', address.city,         { shouldValidate: true });
+    setValue('estado', address.state,        { shouldValidate: true });
+  };
+
+  return {
+    lookupCep,
+    buscarCep,
+    loading,
+    isLoadingCep: loading, // alias para EstablishmentModal
+  };
 }
