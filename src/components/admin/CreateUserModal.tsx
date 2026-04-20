@@ -141,32 +141,45 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
         .filter(p => selectedModules.includes(p.module))
         .map(p => p.id);
 
-      const { data, error } = await supabase.functions.invoke('create-user', {
-        body: {
-          email: formData.email,
-          password: formData.password,
-          fullName: formData.fullName,
-          phone: formData.phone,
-          role_id: selectedRoleId,
-          permission_ids: permissionIds,
-          establishment_id: isOwnerRole ? selectedEstablishmentId : undefined,
-        },
-      });
+      // Use fetch directly instead of supabase.functions.invoke.
+      // Reason: invoke omits the required "apikey" header and swallows HTTP
+      // error details, turning every failure into the generic
+      // "Failed to send a request to the Edge Function" message.
+      const { data: sessionData } = await supabase.auth.getSession();
+      if (!sessionData.session?.access_token) {
+        throw new Error('Sessão expirada. Faça login novamente.');
+      }
 
-      if (error) {
-        let msg = 'Não foi possível criar o usuário.';
-        try {
-          const ctx = (error as any).context;
-          if (ctx && typeof ctx.json === 'function') {
-            const body = await ctx.json();
-            if (body?.error) msg = body.error;
-          } else if (error.message) {
-            msg = error.message;
-          }
-        } catch {
-          if (error.message) msg = error.message;
+      const response = await fetch(
+        `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${sessionData.session.access_token}`,
+            'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          },
+          body: JSON.stringify({
+            email: formData.email,
+            password: formData.password,
+            fullName: formData.fullName,
+            phone: formData.phone,
+            role_id: selectedRoleId,
+            permission_ids: permissionIds,
+            establishment_id: isOwnerRole ? selectedEstablishmentId : undefined,
+          }),
         }
-        throw new Error(msg);
+      );
+
+      // Parse the response body regardless of status code so we can show
+      // the real error message coming from the Edge Function.
+      const data = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        throw new Error(
+          data?.error ||
+          `Erro na Edge Function (HTTP ${response.status}). Verifique se ela está deployada no Supabase.`
+        );
       }
       if (data && !data.success) throw new Error(data.error);
 
