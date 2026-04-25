@@ -3,6 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
@@ -99,13 +100,25 @@ serve(async (req) => {
       }
     }
 
-    // Link owner to establishment
+    // Link user to establishment (owner flag depends on role)
     if (body.establishment_id) {
+      const { data: roleData } = roleId
+        ? await supabaseAdmin.from('roles').select('name').eq('id', roleId).single()
+        : { data: null };
       await supabaseAdmin.from('user_establishments').insert({
         user_id: newUser.user.id,
         establishment_id: body.establishment_id,
-        is_owner: true,
+        is_owner: roleData?.name === 'Proprietário',
       });
+    }
+
+    // Save individual user permissions (for roles that aren't full-access)
+    if (body.permission_ids && body.permission_ids.length > 0) {
+      const permRows = body.permission_ids.map((pid: string) => ({
+        user_id: newUser.user.id,
+        permission_id: pid,
+      }));
+      await supabaseAdmin.from('user_permissions').insert(permRows);
     }
 
     return new Response(

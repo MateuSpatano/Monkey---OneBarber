@@ -72,6 +72,7 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
   const selectedRole = roles.find(r => r.id === selectedRoleId);
   const isFullAccess = selectedRole && FULL_ACCESS_ROLES.includes(selectedRole.name);
   const isOwnerRole = selectedRole?.name === 'Proprietário';
+  const needsEstablishment = selectedRole?.name === 'Proprietário' || selectedRole?.name === 'Barbeiro';
 
   useEffect(() => {
     if (open) {
@@ -130,8 +131,9 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
       return;
     }
 
-    if (isOwnerRole && !selectedEstablishmentId) {
-      toast({ title: 'Campo obrigatório', description: 'Selecione a barbearia para o proprietário.', variant: 'destructive' });
+    if (needsEstablishment && !selectedEstablishmentId) {
+      const label = isOwnerRole ? 'proprietário' : 'barbeiro';
+      toast({ title: 'Campo obrigatório', description: `Selecione a unidade para o ${label}.`, variant: 'destructive' });
       return;
     }
 
@@ -195,8 +197,9 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
       toast({ title: 'Usuário criado', description: 'O usuário foi criado com sucesso.' });
       onSuccess();
       onOpenChange(false);
-    } catch (error: any) {
-      toast({ title: 'Erro', description: error.message || 'Não foi possível criar o usuário.', variant: 'destructive' });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : 'Não foi possível criar o usuário.';
+      toast({ title: 'Erro', description: msg, variant: 'destructive' });
     } finally {
       setLoading(false);
     }
@@ -298,10 +301,10 @@ export function CreateUserModal({ open, onOpenChange, onSuccess }: CreateUserMod
             </Select>
           </div>
 
-          {/* Establishment selection for Owner role */}
-          {isOwnerRole && (
+          {/* Establishment selection for Owner and Barber roles */}
+          {needsEstablishment && (
             <div className="space-y-2">
-              <Label>Barbearia (Unidade) *</Label>
+              <Label>Unidade *</Label>
               <Select value={selectedEstablishmentId} onValueChange={setSelectedEstablishmentId}>
                 <SelectTrigger>
                   <SelectValue placeholder="Selecione a barbearia" />

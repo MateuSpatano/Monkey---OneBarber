@@ -62,23 +62,28 @@ export function usePermissions() {
         setUserRole(role);
         setIsAdmin(role.name === 'Administrador' || role.name === 'Proprietário');
 
-        // Fetch permissions for this role
-        const { data: rolePermissions } = await supabase
-          .from('role_permissions')
-          .select(`
-            permissions:permission_id (
-              module,
-              action
-            )
-          `)
-          .eq('role_id', role.id) as { data: RolePermissionsResponse | null };
+        // Fetch role-level and user-specific permissions in parallel
+        const [rolePermissionsRes, userPermissionsRes] = await Promise.all([
+          supabase
+            .from('role_permissions')
+            .select('permissions:permission_id (module, action)')
+            .eq('role_id', role.id) as Promise<{ data: RolePermissionsResponse | null }>,
+          supabase
+            .from('user_permissions')
+            .select('permissions:permission_id (module, action)')
+            .eq('user_id', user.id) as Promise<{ data: RolePermissionsResponse | null }>,
+        ]);
 
-        if (rolePermissions) {
-          const perms = rolePermissions
-            .map(rp => rp.permissions)
-            .filter(Boolean) as Permission[];
-          setPermissions(perms);
+        const fromRole = (rolePermissionsRes.data ?? []).map(rp => rp.permissions).filter(Boolean) as Permission[];
+        const fromUser = (userPermissionsRes.data ?? []).map(rp => rp.permissions).filter(Boolean) as Permission[];
+
+        const merged = [...fromRole];
+        for (const p of fromUser) {
+          if (!merged.some(m => m.module === p.module && m.action === p.action)) {
+            merged.push(p);
+          }
         }
+        setPermissions(merged);
       } else {
         setUserRole(null);
         setIsAdmin(false);

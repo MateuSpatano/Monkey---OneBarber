@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   Users,
   Shield,
-  ChevronDown,
   ChevronRight,
   Menu,
   X,
@@ -22,8 +21,6 @@ import {
   Megaphone,
   Zap,
   MessageSquare,
-  Phone,
-  Mail,
   Star,
   Percent,
   BarChart3,
@@ -31,8 +28,6 @@ import {
   BookOpen,
   Plug,
   FolderKanban,
-  PanelLeftClose,
-  PanelLeft,
   Lock,
   Headphones,
 } from 'lucide-react';
@@ -248,15 +243,14 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
   const { user, signOut } = useAuth();
   const { canView, userRole, isAdmin } = usePermissionsContext();
 
-  // Save collapsed state to localStorage
+  // Persist state and notify DashboardLayout immediately via custom event
   useEffect(() => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, String(isCollapsed));
-  }, [isCollapsed]);
-
-  // Save submenu state to localStorage to sync with DashboardLayout
-  useEffect(() => {
-    localStorage.setItem('sidebar-submenu-open', activeModule ? 'true' : 'false');
-  }, [activeModule]);
+    const hasSubmenu = !!(activeModule && activeModule.children);
+    window.dispatchEvent(
+      new CustomEvent('sidebar-state-change', { detail: { isCollapsed, hasSubmenu } })
+    );
+  }, [isCollapsed, activeModule]);
 
   const toggleCollapsed = () => {
     setIsCollapsed((prev) => !prev);
@@ -285,6 +279,8 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
         if (item.module === 'dashboard') return true;
         if (isAdmin) return true;
         if (!userRole) return true;
+        // Let parent items through — the second filter removes them if all children are hidden
+        if (item.children && item.children.length > 0) return true;
         return canView(item.module as any);
       })
       .map((item) => ({
@@ -381,17 +377,18 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
   return (
     <>
       {/* Integrated Two-Level Sidebar Container */}
-      <div 
+      <div
         className={cn(
           "fixed inset-y-0 left-0 z-50 flex transition-all duration-300 transform",
-          "m-3 rounded-[32px] shadow-2xl border border-white/10 overflow-hidden bg-transparent",
+          "m-3 shadow-2xl border border-white/10 rounded-[32px] bg-transparent",
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
           activeModule && activeModule.children ? (isCollapsed ? 'w-[304px]' : 'w-[448px]') : (isCollapsed ? 'w-20' : 'w-56')
         )}
       >
         {/* Primary Navigation Column (Solid Black) */}
         <div className={cn(
-          "flex flex-col h-full border-r border-white/5 transition-all duration-300 bg-black relative",
+          "flex flex-col h-full border-r border-white/5 transition-all duration-300 bg-black relative overflow-hidden",
+          activeModule && activeModule.children ? "rounded-l-[32px]" : "rounded-[32px]",
           isCollapsed ? 'w-20' : 'w-56'
         )}>
           {/* Header - Now the logo icon is the toggle */}
@@ -453,12 +450,13 @@ export function Sidebar({ isOpen, onToggle }: SidebarProps) {
           </div>
         </div>
 
-        {/* Secondary Submenu Column (Integrated & Light Glassmorphism) */}
+        {/* Secondary Submenu Column */}
         {activeModule && activeModule.children && (
           <div
             className={cn(
-              'w-56 glass-sidebar flex flex-col relative',
-              'animate-in slide-in-from-left-4 fade-in duration-500 ease-out border-l border-black/5'
+              'w-56 h-full glass-sidebar flex flex-col relative',
+              'rounded-r-[32px] overflow-hidden border-l border-black/5',
+              'animate-in fade-in slide-in-from-left-2 duration-200'
             )}
           >
             {/* Divider Gradient Effect */}

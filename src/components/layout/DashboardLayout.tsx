@@ -13,17 +13,15 @@ export function DashboardLayout() {
   });
   const [isSubmenuOpen, setIsSubmenuOpen] = useState(false);
 
-  // Listen for localStorage changes to sync collapsed and submenu state
+  // Sync collapsed/submenu state instantly via custom event from Sidebar
   useEffect(() => {
-    const handleStorageChange = () => {
-      const savedCollapsed = localStorage.getItem(SIDEBAR_COLLAPSED_KEY);
-      const savedSubmenu = localStorage.getItem('sidebar-submenu-open');
-      setIsCollapsed(savedCollapsed === 'true');
-      setIsSubmenuOpen(savedSubmenu === 'true');
+    const handler = (e: Event) => {
+      const { isCollapsed: c, hasSubmenu } = (e as CustomEvent).detail;
+      setIsCollapsed(c);
+      setIsSubmenuOpen(hasSubmenu);
     };
-
-    const interval = setInterval(handleStorageChange, 100);
-    return () => clearInterval(interval);
+    window.addEventListener('sidebar-state-change', handler);
+    return () => window.removeEventListener('sidebar-state-change', handler);
   }, []);
 
   return (
